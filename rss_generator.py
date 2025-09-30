@@ -36,7 +36,7 @@ def create_rss_feed(title, link, description, items):
     
     return ET.tostring(rss, encoding='unicode', xml_declaration=True)
 
-def scrape_website(url, item_selector, title_selector, link_selector=None, desc_selector=None):
+def scrape_website(url, item_selector, title_selector, link_selector=None, desc_selector=None, time_selector=None):
     """抓取网站内容"""
     try:
         headers = {
@@ -74,11 +74,28 @@ def scrape_website(url, item_selector, title_selector, link_selector=None, desc_
                 if desc_elem:
                     description = str(desc_elem)
             
+            # 获取时间
+            date_str = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+            if time_selector:
+                time_elem = element.select_one(time_selector)
+                if time_elem:
+                    time_text = time_elem.get_text(strip=True)
+                    # 解析时间文本，例如 "— September 26, 2025"
+                    try:
+                        # 移除开头的 "— " 符号
+                        clean_time = time_text.replace("— ", "").strip()
+                        # 解析日期
+                        parsed_date = datetime.strptime(clean_time, "%B %d, %Y")
+                        date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    except:
+                        # 如果解析失败，使用当前时间
+                        pass
+            
             items.append({
                 'title': title,
                 'link': link,
                 'description': description,
-                'date': datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+                'date': date_str
             })
         
         return items
@@ -90,9 +107,9 @@ def scrape_website(url, item_selector, title_selector, link_selector=None, desc_
 def main():
     """主函数"""
     if len(sys.argv) < 4:
-        print("用法: python rss_generator.py <网站URL> <条目选择器> <标题选择器> [链接选择器] [描述选择器]")
+        print("用法: python rss_generator.py <网站URL> <条目选择器> <标题选择器> [链接选择器] [描述选择器] [时间选择器]")
         print("示例: python rss_generator.py 'https://news.ycombinator.com/' 'span.titleline' 'a' 'a'")
-        print("示例: python rss_generator.py 'https://example.com/news' '.news-item' '.title' '.link' '.summary'")
+        print("示例: python rss_generator.py 'https://example.com/news' '.news-item' '.title' '.link' '.summary' '.date'")
         sys.exit(1)
     
     url = sys.argv[1]
@@ -100,6 +117,7 @@ def main():
     title_selector = sys.argv[3]
     link_selector = sys.argv[4] if len(sys.argv) > 4 else None
     desc_selector = sys.argv[5] if len(sys.argv) > 5 else None
+    time_selector = sys.argv[6] if len(sys.argv) > 6 else None
     
     print(f"正在抓取: {url}")
     print(f"条目选择器: {item_selector}")
@@ -108,10 +126,12 @@ def main():
         print(f"链接选择器: {link_selector}")
     if desc_selector:
         print(f"描述选择器: {desc_selector}")
+    if time_selector:
+        print(f"时间选择器: {time_selector}")
     print("-" * 50)
     
     # 抓取内容
-    items = scrape_website(url, item_selector, title_selector, link_selector, desc_selector)
+    items = scrape_website(url, item_selector, title_selector, link_selector, desc_selector, time_selector)
     
     if not items:
         print("没有找到任何内容，请检查选择器是否正确")
