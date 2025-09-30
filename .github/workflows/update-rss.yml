@@ -35,11 +35,11 @@ jobs:
         # 生成 Hacker News RSS
         python3 rss_generator.py "https://news.ycombinator.com/" "span.titleline" "a" "a"
         
-        # 生成 CSIS RSS
-        python3 rss_generator.py "https://www.csis.org/search?page=2" "article" "h3 a" "h3 a"
+        # 生成 CSIS RSS (包含时间选择器)
+        python3 rss_generator.py "https://www.csis.org/search?page=2" "article" "h3 a" "h3 a" "" "span.inline-block"
         
         # 可以添加更多网站...
-        # python3 rss_generator.py "https://example.com" "item-selector" "title-selector" "link-selector"
+        # python3 rss_generator.py "https://example.com" "item-selector" "title-selector" "link-selector" "desc-selector" "time-selector"
     
     - name: Check for changes
       id: verify-changed-files
