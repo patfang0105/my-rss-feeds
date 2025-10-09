@@ -1,0 +1,62 @@
+name: Update RSS Feeds
+
+on:
+  schedule:
+    # 每天北京时间上午9点和晚上9点运行
+    - cron: '0 1 * * *'  # 北京时间 09:00
+    - cron: '0 13 * * *' # 北京时间 21:00
+  workflow_dispatch: # 允许手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  update-feeds:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests beautifulsoup4 lxml
+    
+    - name: Generate RSS feeds
+      run: |
+        # 生成 Hacker News RSS
+        python3 rss_generator.py "https://news.ycombinator.com/" "span.titleline" "a" "a"
+        
+        # 生成 CSIS RSS (包含时间选择器)
+        python3 rss_generator.py "https://www.csis.org/search?page=2" "article" "h3 a" "h3 a" "" "span.inline-block"
+        
+        # 生成 CFR Blog RSS (包含时间选择器)
+        python3 rss_generator.py "https://www.cfr.org/blog" "section" ".card-series__content a" ".card-series__content a" "" "span"
+        
+        # 可以添加更多网站...
+        # python3 rss_generator.py "https://example.com" "item-selector" "title-selector" "link-selector" "desc-selector" "time-selector"
+    
+    - name: Check for changes
+      id: verify-changed-files
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Commit and push changes
+      if: steps.verify-changed-files.outputs.changed == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add rss_*.xml
+        git commit -m "Auto-update RSS feeds - $(date -u +%Y-%m-%d_%H:%M:%S)"
+        git push
