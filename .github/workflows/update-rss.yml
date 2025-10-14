@@ -1,60 +1,70 @@
-name: Update RSS Feeds
+name: 自动更新RSS订阅源
 
 on:
   schedule:
-    # 每天北京时间上午9点和晚上9点运行
-    - cron: '0 1 * * *'  # 北京时间 09:00
-    - cron: '0 13 * * *' # 北京时间 21:00
+    # 每6小时运行一次
+    - cron: '0 */6 * * *'
   workflow_dispatch: # 允许手动触发
 
-# 添加权限设置，解决推送问题
-permissions:
-  contents: write
-
 jobs:
-  update-feeds:
+  update-rss:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
+    - name: 检出代码
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.9'
     
-    - name: Install dependencies
+    - name: 安装依赖
       run: |
+        python -m pip install --upgrade pip
         pip install requests beautifulsoup4 lxml
     
-    - name: Generate RSS feeds
+    - name: 更新CFR RSS
       run: |
-        # 生成 Hacker News RSS
-        python3 rss_generator.py "https://news.ycombinator.com/" "span.titleline" "a" "a"
-        
-        # 生成 CSIS RSS (包含时间选择器)
-        python3 rss_generator.py "https://www.csis.org/search?page=2" "article" "h3 a" "h3 a" "" "span.inline-block"
-        
-        # 可以添加更多网站...
-        # python3 rss_generator.py "https://example.com" "item-selector" "title-selector" "link-selector" "desc-selector" "time-selector"
+        python3 rss_generator.py 'https://www.cfr.org/' '.content-item' '.title a' '.title a' '.summary'
+        echo "CFR RSS 更新完成"
     
-    - name: Check for changes
+    - name: 更新CSIS RSS
+      run: |
+        python3 rss_generator.py 'https://www.csis.org/' '.post-item' '.post-title a' '.post-title a' '.post-excerpt'
+        echo "CSIS RSS 更新完成"
+    
+    - name: 更新BU GDP RSS
+      run: |
+        python3 rss_generator.py bu-gdp
+        echo "BU GDP RSS 更新完成"
+    
+    - name: 检查文件变化
       id: verify-changed-files
       run: |
         if [ -n "$(git status --porcelain)" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
+          echo "检测到文件变化"
+          git status --porcelain
         else
           echo "changed=false" >> $GITHUB_OUTPUT
+          echo "没有检测到文件变化"
         fi
     
-    - name: Commit and push changes
+    - name: 提交更改
       if: steps.verify-changed-files.outputs.changed == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add rss_*.xml
-        git commit -m "Auto-update RSS feeds - $(date -u +%Y-%m-%d_%H:%M:%S)"
+        git add *.xml
+        git commit -m "Auto-update RSS feeds - $(date '+%Y-%m-%d_%H:%M:%S')"
         git push
+        echo "RSS文件已自动更新并提交"
+    
+    - name: 显示更新结果
+      run: |
+        echo "=== RSS更新结果 ==="
+        ls -la *.xml
+        echo "=================="
