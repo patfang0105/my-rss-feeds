@@ -28,12 +28,12 @@ jobs:
     
     - name: 更新CFR RSS
       run: |
-        python3 rss_generator.py 'https://www.cfr.org/' '.content-item' '.title a' '.title a' '.summary'
+        python3 rss_generator.py 'https://www.cfr.org/' 'article' 'h3' 'a' 'p'
         echo "CFR RSS 更新完成"
     
     - name: 更新CSIS RSS
       run: |
-        python3 rss_generator.py 'https://www.csis.org/' '.post-item' '.post-title a' '.post-title a' '.post-excerpt'
+        python3 rss_generator.py 'https://www.csis.org/' 'article' 'h3' 'a[class*="headline"]' 'p'
         echo "CSIS RSS 更新完成"
     
     - name: 更新BU GDP RSS
