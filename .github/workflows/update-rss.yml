@@ -2,8 +2,10 @@ name: 自动更新RSS订阅源
 
 on:
   schedule:
-    # 每6小时运行一次
-    - cron: '0 */6 * * *'
+    # 每天运行两次（北京时间 06:00 和 18:00）
+    # 北京时间 = UTC+8，所以需要提前8小时
+    - cron: '0 22 * * *'   # UTC 22:00 = 北京时间次日 06:00
+    - cron: '0 10 * * *'  # UTC 10:00 = 北京时间 18:00
   workflow_dispatch: # 允许手动触发
 
 jobs:
@@ -31,6 +33,11 @@ jobs:
       run: |
         python3 rss_generator.py 'https://www.cfr.org/' 'article' 'h3' 'a' 'p'
         echo "CFR RSS 更新完成"
+    
+    - name: 更新CFR经济学RSS
+      run: |
+        python3 rss_generator.py cfr-economics
+        echo "CFR经济学RSS 更新完成"
     
     - name: 更新CSIS RSS
       run: |
