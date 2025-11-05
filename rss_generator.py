@@ -652,7 +652,7 @@ def scrape_rhg_china_website():
         return []
 
 def scrape_cfr_economics_website():
-    """专门抓取CFR经济学页面内容"""
+    """专门抓取CFR经济学页面内容 - 使用精确的选择器确保抓取所有文章"""
     url = "https://www.cfr.org/economics"
     
     try:
@@ -706,114 +706,57 @@ def scrape_cfr_economics_website():
         if page_title:
             print(f"页面标题: {page_title.get_text()}")
         
-        # 策略1: 查找所有指向文章或博客的链接
-        all_links = soup.find_all('a', href=True)
-        seen_links = set()
-        
-        for link in all_links:
-            href = link.get('href', '')
-            title_text = link.get_text(strip=True)
-            
-            # 过滤条件: 链接包含文章路径,标题长度合理,且不是重复的
-            # 只处理真正的文章和博客,不处理主题分类页面
-            if (title_text and len(title_text) > 15 and 
-                href and ('/article/' in href or '/blog/' in href) and
-                href not in seen_links and not href.startswith('#')):
-                
-                # 构建完整URL
-                if href.startswith('http'):
-                    full_url = href.strip()
-                elif href.startswith('/'):
-                    full_url = f'https://www.cfr.org{href.strip()}'
-                else:
-                    full_url = urljoin(url, href.strip())
-                
-                # 跳过主页和分类页面
-                if full_url in ['https://www.cfr.org/', 'https://www.cfr.org/economics']:
-                    continue
-                
-                seen_links.add(full_url)
-                
-                # 查找父元素中的日期和描述信息
-                parent = link.parent
-                date_str = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-                description = ""
-                
-                # 向上查找包含日期和描述的容器
-                for _ in range(5):
-                    if parent:
-                        parent_text = parent.get_text()
-                        
-                        # 查找日期模式 (例如: "October 30, 2025")
-                        date_patterns = [
-                            r'(\w+\s+\d{1,2},\s+\d{4})',  # October 30, 2025
-                            r'(\d{1,2}\s+\w+\s+\d{4})',   # 30 October 2025
-                        ]
-                        for pattern in date_patterns:
-                            date_match = re.search(pattern, parent_text)
-                            if date_match:
-                                try:
-                                    date_str_clean = date_match.group(1)
-                                    # 尝试解析日期
-                                    parsed_date = datetime.strptime(date_str_clean, "%B %d, %Y")
-                                    date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-                                    break
-                                except:
-                                    try:
-                                        parsed_date = datetime.strptime(date_str_clean, "%d %B %Y")
-                                        date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-                                        break
-                                    except:
-                                        pass
-                        
-                        # 查找描述 (通常是段落文本)
-                        desc_elem = parent.find('p')
-                        if desc_elem:
-                            description = desc_elem.get_text(strip=True)
-                            if len(description) > 10:
-                                break
-                        
-                        parent = parent.parent
-                    else:
-                        break
-                
-                if not description:
-                    description = f"来自CFR经济学: {title_text}"
-                
-                items.append({
-                    'title': title_text,
-                    'link': full_url,
-                    'description': description[:500],  # 限制描述长度
-                    'date': date_str
-                })
-        
-        # 策略2: 查找包含特定CSS类的元素
-        selectors_to_try = [
-            'article',
-            '.article',
-            'div[class*="card"]',
-            'div[class*="item"]',
-            'li[class*="item"]',
-            'section[class*="content"]'
+        # 使用用户提供的精确选择器
+        # 文章列表容器 - 尝试多个选择器
+        list_container = None
+        container_selectors = [
+            'ul.krt-grid__list-container.krt-grid__list-container--with-breaker',
+            'ul.krt-grid__list-container',
+            'ul[class*="krt-grid"]',
+            'ul[class*="list-container"]',
+            '.topics-page ul',
+            'main ul'
         ]
         
-        for selector in selectors_to_try:
-            elements = soup.select(selector)
-            if len(elements) > 0:
-                print(f"选择器 '{selector}' 找到 {len(elements)} 个元素")
-                
-                for element in elements:
-                    # 查找标题链接
-                    title_link = element.find('a', href=True)
-                    if not title_link:
+        for selector in container_selectors:
+            list_container = soup.select_one(selector)
+            if list_container:
+                print(f"使用选择器 '{selector}' 找到文章列表容器")
+                break
+        
+        if list_container:
+            # 查找所有文章条目 - 包括所有li元素
+            articles = list_container.find_all('li', recursive=False)
+            # 如果没找到，尝试查找所有li
+            if len(articles) == 0:
+                articles = list_container.find_all('li')
+            print(f"找到 {len(articles)} 个文章条目")
+            
+            for article in articles:
+                try:
+                    # 查找标题 - 使用 .card-article-large__title
+                    title_elem = article.select_one('.card-article-large__title')
+                    if not title_elem:
+                        # 备用：查找a标签内的标题
+                        title_elem = article.select_one('a div.card-article-large__title')
+                    
+                    if not title_elem:
                         continue
                     
-                    title = title_link.get_text(strip=True)
-                    href = title_link.get('href', '')
-                    
-                    if not title or len(title) < 15:
+                    title = title_elem.get_text(strip=True)
+                    if not title or len(title) < 5:
                         continue
                     
+                    # 查找链接 - 标题通常在a标签内
+                    link_elem = title_elem.find_parent('a')
+                    if not link_elem:
+                        # 备用：查找article中的a标签
+                        link_elem = article.find('a', href=True)
+                    
+                    if not link_elem or not link_elem.get('href'):
+                        continue
+                    
+                    href = link_elem.get('href', '')
                     # 构建完整URL
                     if href.startswith('http'):
                         full_url = href.strip()
@@ -822,32 +765,57 @@ def scrape_cfr_economics_website():
                     else:
                         full_url = urljoin(url, href.strip())
                     
-                    # 跳过已存在的链接
-                    if full_url in seen_links:
-                        continue
+                    # 查找日期 - 使用 .card-article-large__date
+                    date_str = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    date_elem = article.select_one('.card-article-large__date')
+                    if not date_elem:
+                        # 备用：查找metadata中的日期
+                        metadata = article.select_one('.card-article-large__metadata')
+                        if metadata:
+                            date_elem = metadata.select_one('span.card-article-large__date')
                     
-                    # 只处理文章和博客链接,不处理主题分类页面
-                    if '/article/' not in full_url and '/blog/' not in full_url:
-                        continue
-                    
-                    seen_links.add(full_url)
+                    if date_elem:
+                        date_text = date_elem.get_text(strip=True)
+                        if date_text:
+                            # 解析日期格式 (例如: "October 30, 2025" 或 "Nov 3, 2025")
+                            # 尝试多种日期格式
+                            date_formats = [
+                                "%B %d, %Y",  # October 30, 2025
+                                "%b %d, %Y",  # Nov 3, 2025
+                                "%m/%d/%Y",   # 10/30/2025
+                                "%Y-%m-%d",   # 2025-10-30
+                            ]
+                            
+                            for date_format in date_formats:
+                                try:
+                                    parsed_date = datetime.strptime(date_text.strip(), date_format)
+                                    date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                    break
+                                except:
+                                    # 如果标准格式失败，尝试正则表达式提取
+                                    date_match = re.search(r'(\w+)\s+(\d{1,2}),\s+(\d{4})', date_text)
+                                    if date_match:
+                                        try:
+                                            parsed_date = datetime.strptime(date_match.group(0), "%B %d, %Y")
+                                            date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                            break
+                                        except:
+                                            try:
+                                                parsed_date = datetime.strptime(date_match.group(0), "%b %d, %Y")
+                                                date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                                break
+                                            except:
+                                                pass
+                                    pass
                     
                     # 查找描述
                     description = ""
-                    desc_elem = element.find('p')
+                    # 尝试查找描述文本
+                    desc_elem = article.select_one('.card-article-large__description')
+                    if not desc_elem:
+                        desc_elem = article.select_one('p')
                     if desc_elem:
                         description = desc_elem.get_text(strip=True)
-                    
-                    # 查找日期
-                    date_str = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-                    element_text = element.get_text()
-                    date_match = re.search(r'(\w+\s+\d{1,2},\s+\d{4})', element_text)
-                    if date_match:
-                        try:
-                            parsed_date = datetime.strptime(date_match.group(1), "%B %d, %Y")
-                            date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-                        except:
-                            pass
                     
                     if not description:
                         description = f"来自CFR经济学: {title}"
@@ -858,6 +826,189 @@ def scrape_cfr_economics_website():
                         'description': description[:500],
                         'date': date_str
                     })
+                    
+                except Exception as e:
+                    print(f"处理文章条目时出错: {e}")
+                    continue
+        # 也尝试直接查找所有标题元素（确保不遗漏）
+        all_title_elems = soup.select('.card-article-large__title')
+        articles_count = len(articles) if list_container else 0
+        if len(all_title_elems) > articles_count or len(items) < len(all_title_elems):
+            print(f"直接查找找到 {len(all_title_elems)} 个标题元素，补充缺失的文章...")
+            # 使用所有标题元素作为补充
+            for title_elem in all_title_elems:
+                try:
+                    # 检查是否已经在items中
+                    title = title_elem.get_text(strip=True)
+                    if not title:
+                        continue
+                    
+                    # 查找链接
+                    link_elem = title_elem.find_parent('a')
+                    if not link_elem:
+                        continue
+                    
+                    href = link_elem.get('href', '')
+                    if not href:
+                        continue
+                    
+                    if href.startswith('http'):
+                        full_url = href.strip()
+                    elif href.startswith('/'):
+                        full_url = f'https://www.cfr.org{href.strip()}'
+                    else:
+                        full_url = urljoin(url, href.strip())
+                    
+                    # 检查是否已存在
+                    if any(item['link'] == full_url for item in items):
+                        continue
+                    
+                    # 查找日期
+                    date_str = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    article_elem = title_elem.find_parent('li')
+                    if not article_elem:
+                        article_elem = title_elem.find_parent(['div', 'article'])
+                    
+                    if article_elem:
+                        date_elem = article_elem.select_one('.card-article-large__date')
+                        if date_elem:
+                            date_text = date_elem.get_text(strip=True)
+                            if date_text:
+                                date_formats = [
+                                    "%B %d, %Y",  # October 30, 2025
+                                    "%b %d, %Y",  # Nov 3, 2025
+                                    "%m/%d/%Y",   # 10/30/2025
+                                    "%Y-%m-%d",   # 2025-10-30
+                                ]
+                                
+                                for date_format in date_formats:
+                                    try:
+                                        parsed_date = datetime.strptime(date_text.strip(), date_format)
+                                        date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                        break
+                                    except:
+                                        date_match = re.search(r'(\w+)\s+(\d{1,2}),\s+(\d{4})', date_text)
+                                        if date_match:
+                                            try:
+                                                parsed_date = datetime.strptime(date_match.group(0), "%B %d, %Y")
+                                                date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                                break
+                                            except:
+                                                try:
+                                                    parsed_date = datetime.strptime(date_match.group(0), "%b %d, %Y")
+                                                    date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                                    break
+                                                except:
+                                                    pass
+                                        pass
+                    
+                    # 查找描述
+                    description = ""
+                    if article_elem:
+                        desc_elem = article_elem.select_one('.card-article-large__description')
+                        if not desc_elem:
+                            desc_elem = article_elem.select_one('p')
+                        if desc_elem:
+                            description = desc_elem.get_text(strip=True)
+                    
+                    if not description:
+                        description = f"来自CFR经济学: {title}"
+                    
+                    items.append({
+                        'title': title,
+                        'link': full_url,
+                        'description': description[:500],
+                        'date': date_str
+                    })
+                except Exception as e:
+                    print(f"处理补充条目时出错: {e}")
+                    continue
+        
+        if not list_container and len(items) == 0:
+            print("未找到文章列表容器，尝试备用方法...")
+            # 备用方法：查找所有包含 .card-article-large__title 的元素
+            title_elems = soup.select('.card-article-large__title')
+            print(f"备用方法找到 {len(title_elems)} 个标题元素")
+            
+            for title_elem in title_elems:
+                try:
+                    title = title_elem.get_text(strip=True)
+                    if not title:
+                        continue
+                    
+                    # 查找链接
+                    link_elem = title_elem.find_parent('a')
+                    if not link_elem:
+                        continue
+                    
+                    href = link_elem.get('href', '')
+                    if not href:
+                        continue
+                    
+                    if href.startswith('http'):
+                        full_url = href.strip()
+                    elif href.startswith('/'):
+                        full_url = f'https://www.cfr.org{href.strip()}'
+                    else:
+                        full_url = urljoin(url, href.strip())
+                    
+                    # 查找日期
+                    date_str = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+                    article_elem = title_elem.find_parent('li')
+                    if article_elem:
+                        date_elem = article_elem.select_one('.card-article-large__date')
+                        if date_elem:
+                            date_text = date_elem.get_text(strip=True)
+                            if date_text:
+                                # 尝试多种日期格式
+                                date_formats = [
+                                    "%B %d, %Y",  # October 30, 2025
+                                    "%b %d, %Y",  # Nov 3, 2025
+                                    "%m/%d/%Y",   # 10/30/2025
+                                    "%Y-%m-%d",   # 2025-10-30
+                                ]
+                                
+                                for date_format in date_formats:
+                                    try:
+                                        parsed_date = datetime.strptime(date_text.strip(), date_format)
+                                        date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                        break
+                                    except:
+                                        # 如果标准格式失败，尝试正则表达式提取
+                                        date_match = re.search(r'(\w+)\s+(\d{1,2}),\s+(\d{4})', date_text)
+                                        if date_match:
+                                            try:
+                                                parsed_date = datetime.strptime(date_match.group(0), "%B %d, %Y")
+                                                date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                                break
+                                            except:
+                                                try:
+                                                    parsed_date = datetime.strptime(date_match.group(0), "%b %d, %Y")
+                                                    date_str = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                                                    break
+                                                except:
+                                                    pass
+                                        pass
+                    
+                    # 查找描述
+                    description = ""
+                    if article_elem:
+                        desc_elem = article_elem.select_one('p')
+                        if desc_elem:
+                            description = desc_elem.get_text(strip=True)
+                    
+                    if not description:
+                        description = f"来自CFR经济学: {title}"
+                    
+                    items.append({
+                        'title': title,
+                        'link': full_url,
+                        'description': description[:500],
+                        'date': date_str
+                    })
+                except Exception as e:
+                    print(f"处理备用条目时出错: {e}")
+                    continue
         
         # 去重（基于链接）
         final_items = []
@@ -873,6 +1024,7 @@ def scrape_cfr_economics_website():
         except:
             pass
         
+        print(f"✅ 成功抓取 {len(final_items)} 篇文章")
         return final_items
         
     except Exception as e:
