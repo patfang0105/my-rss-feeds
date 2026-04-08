@@ -43,12 +43,7 @@ jobs:
       run: |
         python3 rss_generator.py 'https://www.csis.org/' 'article' 'h3' 'a[class*="headline"]' 'p'
         echo "CSIS RSS 更新完成"
-    
-    - name: 更新BU GDP RSS
-      run: |
-        python3 rss_generator.py bu-gdp
-        echo "BU GDP RSS 更新完成"
-    
+      
     - name: 检查文件变化
       id: verify-changed-files
       run: |
